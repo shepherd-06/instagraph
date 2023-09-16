@@ -83,6 +83,10 @@
       const form = document.getElementById("inputForm");
       const load = document.getElementById("load");
 
+      // load history data from db.
+      let currentPage = 1; //pagination; default
+      let remainingItems = 0;
+
       // form event listener
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -168,10 +172,10 @@
             avoidOverlap: true,
           },
 
-          ready: function(){
+          ready: function () {
             this.fit(); // Fits all elements in the viewport
             this.center(); // Centers the graph in the viewport
-          }
+          },
         });
       }
 
@@ -187,6 +191,7 @@
 
       // Event listener for the form submission
       /** This part of code is [DOUBLE]. They exist in the beginning of the Script.
+      I amn't removing it right away to understand the implication of this portion.
             document.getElementById("inputForm").addEventListener("submit", function (e) {
                 e.preventDefault(); // Prevent form submission
                 const userInput = document.getElementById("userInput").value;
@@ -268,14 +273,14 @@
 
           if (!response.ok) {
             showError("Network response was not ok " + response.statusText);
-            //throw new Error(
-            //  "Network response was not ok " + response.statusText
-            //);
           }
 
-          const { graph_history } = await response.json();
+          const { graph_history, remaining } = await response.json();
 
           const graphHistoryDiv = document.getElementById("history");
+          console.log(graph_history);
+          console.log(remaining);
+          remainingItems = remaining;
 
           graph_history.forEach((item, index) => {
             graphHistoryDiv.innerHTML += `
@@ -289,10 +294,40 @@
               item.to_node.type
             })</p></div>`;
           });
+
+          // Adding pagination
+          graphHistoryDiv.innerHTML += `
+                <div class="flex justify-between mt-4">
+                ${
+                  currentPage > 1
+                    ? '<button onclick="prevPage()">Back</button>'
+                    : ""
+                }
+                ${
+                  remaining > 0
+                    ? '<button onclick="nextPage()">Next</button>'
+                    : ""
+                }
+                </div>
+            `;
         } catch (error) {
           console.error("Error fetching graph history:", error);
           const graphHistoryDiv = document.getElementById("history");
           graphHistoryDiv.innerHTML += `<p> Error fetching graph history: ${error}<p>`;
+        }
+      }
+
+      function nextPage() {
+        if (remainingItems > 0) {
+            currentPage++;
+            fetchGraphHistory();
+        }
+      }
+
+      function prevPage() {
+        if (currentPage > 1) {
+          currentPage--;
+          fetchGraphHistory();
         }
       }
 
