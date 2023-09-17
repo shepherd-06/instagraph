@@ -1,5 +1,7 @@
+import logging
 import os
 import json
+import re
 import openai
 import requests
 from bs4 import BeautifulSoup
@@ -28,7 +30,14 @@ if neo4j_username and neo4j_password and neo4j_url:
         neo4j_url, auth=(neo4j_username, neo4j_password))
     with neo4j_driver.session() as session:
         session.run("RETURN 1")
+        print("*************************************")
         print("Neo4j database connected successfully!")
+        print("*************************************")
+
+# configure logging
+logging.basicConfig(filename='app.log', level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
 
 # Function to scrape text from a website
 
@@ -131,21 +140,28 @@ def get_response_data():
         )
     except openai.error.RateLimitError as e:
         # request limit exceeded or something.
+        logging.error("Error: RateLimitError. {}".format(jde))
         return jsonify({"error": "".format(e)}), 429
     except Exception as e:
         # general exception handling
+        logging.error("Error: Exception. {}".format(jde))
         return jsonify({"error": "".format(e)}), 400
 
     response_data = completion.choices[0]["message"]["function_call"]["arguments"]
-    # print(response_data)
+    response_data = sanitize_json(response_data)
+
+    if response_data is None:
+        return jsonify({"Error Occurred!"}), 500
+
     try:
+        # TODO: not needed try-catch block. there's not JSON loading here.
         if neo4j_driver:
             # Import nodes
             neo4j_driver.execute_query("""
             UNWIND $nodes AS node
             MERGE (n:Node {id:toLower(node.id)})
             SET n.type = node.type, n.label = node.label, n.color = node.color""",
-                                       {"nodes": json.loads(response_data)['nodes']})
+                                       {"nodes": response_data['nodes']})
             # Import relationships
             neo4j_driver.execute_query("""
             UNWIND $rels AS rel
@@ -155,10 +171,12 @@ def get_response_data():
             SET r.direction = rel.direction,
                 r.color = rel.color,
                 r.timestamp = timestamp();
-            """, {"rels": json.loads(response_data)['edges']})
+            """, {"rels": response_data['edges']})
     except json.decoder.JSONDecodeError as jde:
+        logging.error("Error: JSONDecoderError. {}".format(jde))
         return jsonify({"Error": "{}".format(jde)}), 500
 
+    logging.info("return: response data from get_respone_data func")
     return response_data
 
 
@@ -297,6 +315,18 @@ def process_graph_data(record):
         return graph_data
     except Exception as e:
         return {"error": str(e)}
+
+
+def sanitize_json(json_str):
+    # Remove trailing commas
+    sanitized_str = re.sub(r',\s*}', '}', json_str)
+    sanitized_str = re.sub(r',\s*]', ']', sanitized_str)
+
+    try:
+        return json.loads(sanitized_str)
+    except json.JSONDecodeError as e:
+        logging.error("SantizationError: {}".format(e))
+        return None
 
 
 @app.route("/")

@@ -53,8 +53,8 @@
 
       <div
         id="error-message"
-        class="fixed w-full h-3 mb-2 bg-red-500 text-white flex items-center justify-between p-4 rounded-md shadow"
-        style="display: none"
+        class="w-full h-3 mb-2 bg-red-500 text-white flex items-center justify-between p-4 rounded-md shadow"
+        style="display: none; max-height: 100px; overflow-y: auto"
       >
         <span id="error-text"></span>
         <span id="error-close" style="cursor: pointer">&times;</span>
@@ -233,9 +233,9 @@
         const errorDiv = document.getElementById("error-message");
         errorDiv.style.display = "flex";
 
-        setTimeout(() => {
-          errorDiv.style.display = "none";
-        }, 5000);
+        //setTimeout(() => {
+        //  errorDiv.style.display = "none";
+        // }, 5000);
       }
 
       // draw graph from history.
