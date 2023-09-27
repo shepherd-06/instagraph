@@ -38,7 +38,9 @@ if neo4j_username and neo4j_password and neo4j_url:
             session.run("RETURN 1")
             print("Neo4j database connected successfully!")
         except ValueError as ve:
-            print("Neo4j database: {}".format(ve))
+            print("Neo4j database [value error] connection error: {}".format(ve))
+        except Exception as e:
+            print("Neo4j database connection error: {}".format(e))
 
 # Function to scrape text from a website
 
@@ -168,7 +170,6 @@ def get_response_data():
     
     try:
         if neo4j_driver:
-            print(response_data)
             # Import nodes
             results = neo4j_driver.execute_query(
                 """
@@ -191,10 +192,11 @@ def get_response_data():
                     r.color = rel.color,
                     r.timestamp = timestamp();
                 """,
-                {"rels": response_data['edges']}
+                {"rels": edge}
             )
             #print(f"Created {summary.counters.updates().relationshipsCreated} relationships.")
             print("Results from Neo4j:", results)
+            # TODO: results coule be amepty. 
             
     except Exception as e:
         print("An error occurred during the Neo4j operation:", e)
