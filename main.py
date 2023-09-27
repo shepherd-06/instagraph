@@ -5,14 +5,14 @@ import openai
 import requests
 from bs4 import BeautifulSoup
 from graphviz import Digraph
-import networkx as nx
 from neo4j import GraphDatabase
-from neo4j.exceptions import ServiceUnavailable, CypherSyntaxError, CypherTypeError
 from flask import Flask, jsonify, render_template, request
 from dotenv import load_dotenv
 import instructor
 from models import KnowledgeGraph
 import time
+from uuid import uuid4
+import traceback
 
 instructor.patch()
 
@@ -38,7 +38,8 @@ if neo4j_username and neo4j_password and neo4j_url:
             session.run("RETURN 1")
             print("Neo4j database connected successfully!")
         except ValueError as ve:
-            print("Neo4j database [value error] connection error: {}".format(ve))
+            print(
+                "Neo4j database [value error] connection error: {}".format(ve))
         except Exception as e:
             print("Neo4j database connection error: {}".format(e))
 
@@ -126,8 +127,6 @@ def correct_json(json_str):
         return None
 
 
-
-
 @app.route("/get_response_data", methods=["POST"])
 def get_response_data():
     global response_data
@@ -149,10 +148,7 @@ def get_response_data():
 
         # Its now a dict, no need to worry about json loading so many times
         response_data = completion.model_dump()
-      
-        print("Raw OpenAI Response:", response_data)
-      
-        #response_data = correct_json(response_data)
+        # response_data = correct_json(response_data)
         # Fixing 'from_' to 'from' in the edges
         for edge in response_data['edges']:
             edge['from'] = edge.pop('from_')
@@ -167,42 +163,110 @@ def get_response_data():
         return jsonify({"error": "".format(e)}), 400
 
     # Assuming you have the correct neo4j_driver instance.
-    
+
     try:
         if neo4j_driver:
             # Import nodes
-            results = neo4j_driver.execute_query(
+            unique_id = str(uuid4())
+            description = response_data["metadata"]["description"]
+            created_on = response_data["metadata"]["createdDate"]
+            updated_on = response_data["metadata"]["lastUpdated"]
+
+            # Create MetaData node
+            neo4j_driver.execute_query(
+                """
+                CREATE (m:MetaData {uuid: $uuid, description: $description, createdOn: $createdOn, lastUpdatedOn: $lastUpdatedOn})
+                RETURN m
+                """,
+                {
+                    "uuid": unique_id, "description": description,
+                    "createdOn": created_on,
+                    "lastUpdatedOn": updated_on
+                }
+            )
+
+            # Import nodes and link to MetaData
+            neo4j_driver.execute_query(
                 """
                 UNWIND $nodes AS node
                 MERGE (n:Node {id: node.id})
-                SET n.type = node.type, n.label = node.label, n.color = node.color
+                ON CREATE SET n.type = node.type, 
+                            n.label = node.label, 
+                            n.color = node.color
+                WITH n
+                MATCH (m:MetaData {uuid: $uuid})
+                MERGE (m)-[:CONTAINS]->(n)
                 """,
-                {"nodes": response_data['nodes']}
+                {"nodes": response_data['nodes'], "uuid": unique_id}
             )
-            print("Results from Neo4j:", results)
-            #print(f"Created {summary.counters.updates().nodesCreated} nodes.")
-            # Import relationships
-            results = neo4j_driver.execute_query(
+
+            # Import relationships and link to MetaData
+            neo4j_driver.execute_query(
                 """
                 UNWIND $rels AS rel
                 MATCH (s:Node {id: rel.from})
                 MATCH (t:Node {id: rel.to})
-                MERGE (s)-[r:RELATIONSHIP {type:rel.relationship}]->(t)
-                SET r.direction = rel.direction,
-                    r.color = rel.color,
-                    r.timestamp = timestamp();
+                MERGE (s)-[r:RELATIONSHIP {type: rel.relationship}]->(t)
+                ON CREATE SET r.direction = rel.direction,
+                            r.color = rel.color,
+                            r.timestamp = timestamp();
                 """,
-                {"rels": edge}
+                {"rels": response_data['edges'], "uuid": unique_id}
             )
-            #print(f"Created {summary.counters.updates().relationshipsCreated} relationships.")
-            print("Results from Neo4j:", results)
-            # TODO: results coule be amepty. 
-            
+
+            # create a payload to return.
+            nodes = [
+                {
+                    "data": {
+                        "id": node["id"],
+                        "label": node["label"],
+                        "color": node.get("color", "defaultColor"),
+                    }
+                }
+                for node in response_data["nodes"]
+            ]
+
+            edges = [
+                {
+                    "data": {
+                        "source": edge["from"],
+                        "target": edge["to"],
+                        "label": edge["relationship"],
+                        "color": edge.get("color", "defaultColor"),
+                        "direction": edge["direction"],
+                    }
+                }
+                for edge in response_data["edges"]
+            ]
+
+            return jsonify({
+                "elements": {
+                    "nodes": nodes,
+                    "edges": edges
+                },
+                "meta": {
+                    "unique_id": unique_id,
+                    "description": description,
+                    "createdOn": created_on,
+                    "lastUpdatedOn": updated_on,
+                }})
+        else:
+            return jsonify(
+                {
+                    "error": "An error occurred during the Neo4j operation",
+                    "elements": {"nodes": [], "edges": []},
+                    "meta": {
+                        "unique_id": "",
+                        "description": "",
+                        "createdOn": "",
+                        "lastUpdatedOn": "",
+                    }
+                }), 500
+
     except Exception as e:
         print("An error occurred during the Neo4j operation:", e)
+        traceback.print_exc()
         return jsonify({"error": "An error occurred during the Neo4j operation: {}".format(e)}), 500
-    
-    return response_data, 200
 
 
 # Function to visualize the knowledge graph using Graphviz
@@ -233,6 +297,10 @@ def visualize_knowledge_graph_with_graphviz():
 
 @app.route("/get_graph_data", methods=["POST"])
 def get_graph_data():
+    """
+    This function is now redundant and will be removed soon. 
+    The front-end should not call this function.
+    """
     try:
         if neo4j_driver:
             nodes, _, _ = neo4j_driver.execute_query("""
@@ -277,9 +345,10 @@ def get_graph_data():
                 }
                 for edge in response_dict["edges"]
             ]
-        return jsonify({"elements": {"nodes": nodes, "edges": edges}})
+        return jsonify({"elements": {"nodes": nodes, "edges": edges}, "message": "This function is now redundant and will be removed soon."}), 200
     except:
-        return jsonify({"elements": {"nodes": [], "edges": []}})
+        # 410 Gone
+        return jsonify({"elements": {"nodes": [], "edges": []}, "message": "This function is now redundant and will be removed soon."}), 410
 
 
 @app.route("/get_graph_history", methods=["GET"])
@@ -347,4 +416,4 @@ def index():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port=8080)
+    app.run(host="0.0.0.0", port=8080)
