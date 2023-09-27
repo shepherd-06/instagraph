@@ -345,10 +345,12 @@ def get_graph_data():
                 }
                 for edge in response_dict["edges"]
             ]
-        return jsonify({"elements": {"nodes": nodes, "edges": edges}, "message": "This function is now redundant and will be removed soon."}), 200
+        return jsonify({"elements": {"nodes": nodes, "edges": edges},
+                        "message": "This function is now redundant and will be removed soon."}), 200
     except:
         # 410 Gone
-        return jsonify({"elements": {"nodes": [], "edges": []}, "message": "This function is now redundant and will be removed soon."}), 410
+        return jsonify({"elements": {"nodes": [], "edges": []},
+                        "message": "This function is now redundant and will be removed soon."}), 410
 
 
 @app.route("/get_graph_history", methods=["GET"])

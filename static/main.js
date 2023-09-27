@@ -20,6 +20,9 @@ async function postData(url, data = {}) {
 
 // create Graph in cy div.
 async function createGraph(data) {
+  const descriptionElement = document.getElementById("graphDescription");
+  descriptionElement.innerText = data.meta.description;
+
   cytoscape({
     container: document.getElementById("cy"),
     elements: data.elements,
