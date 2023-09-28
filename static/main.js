@@ -69,6 +69,7 @@ async function createGraph(data) {
 
     ready: function () {
       this.fit(); // Fits all elements in the viewport
+      // this.zoom(0.3); // Sets the zoom level to 80% of the original. Adjust this value as needed.
       this.center(); // Centers the graph in the viewport
     },
   });

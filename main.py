@@ -211,7 +211,7 @@ def get_response_data():
                             r.color = rel.color,
                             r.timestamp = timestamp();
                 """,
-                {"rels": response_data['edges'], "uuid": unique_id}
+                {"rels": response_data['edges']}
             )
 
             # create a payload to return.
@@ -435,11 +435,12 @@ def get_graph_history():
         if neo4j_driver:
             # Fetching 10 most recent MetaData along with related nodes and relationships
             result, _, _ = neo4j_driver.execute_query("""
-            MATCH (m:MetaData)
-            WITH m ORDER BY datetime(m.lastUpdatedOn) DESC LIMIT 10
-            MATCH (m)-[:CONTAINS]->(n:Node)
-            MATCH (n)-[r:RELATIONSHIP]->(other:Node) WHERE (m)-[:CONTAINS]->(other)
-            RETURN m,n, r, other
+            MATCH (m:MetaData)-[:CONTAINS]->(n:Node)
+            WITH collect(n.id) as nodeIds, m as metaData
+            ORDER BY metaData.lastUpdatedOn DESC
+            MATCH (s:Node)-[r:RELATIONSHIP]->(t:Node)
+            WHERE s.id IN nodeIds AND t.id IN nodeIds
+            RETURN s AS source, r AS relation, t AS target, metaData
             """)
 
             current_uuid = None
@@ -448,11 +449,11 @@ def get_graph_history():
 
             for record in result:
                 # Converting dict_items to dictionary
-                node_meta = dict(record['m'].items())
+                node_meta = dict(record['metaData'].items())
                 # they will be converted automatically in the loop
-                node_from = record['n'].items()
-                relationship = record['r'].items()
-                node_to = record['other'].items()
+                node_from = record['source'].items()
+                relationship = record['relation'].items()
+                node_to = record['target'].items()
 
                 if current_uuid is None:
                     # initial logic
