@@ -147,7 +147,6 @@ def get_response_data():
 
         # Its now a dict, no need to worry about json loading so many times
         response_data = completion.model_dump()
-        # response_data = correct_json(response_data)
         # Fixing 'from_' to 'from' in the edges
         for edge in response_data['edges']:
             edge['from'] = edge.pop('from_')

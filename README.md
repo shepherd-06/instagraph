@@ -103,7 +103,7 @@ Best way to chat with me is on Twitter at [@yoheinakajima](https://twitter.com/y
 - ✅Show history
 - 📝Ability to combine two graphs
 - 📝Ability to combine 2+ graphs from history
-- ✅~~Ability to expand on a graph~~ (thx [@tomasonjo](https://github.com/tomasonjo)! 9/13/23)
+- 📝Ability to expand on a graph
 - 📝Ability to expand on graph from specific nodes
 - 📝Fuzzy matching of nodes for combining graphs (vector match + LLM confirmation)
 
