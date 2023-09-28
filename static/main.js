@@ -1,6 +1,5 @@
 const calcNodeWidth = (label) => Math.max(50, label.length * 8) + "px";
 const form = document.getElementById("inputForm");
-const load = document.getElementById("load");
 
 // General purpose post func
 async function postData(url, data = {}) {
@@ -214,6 +213,7 @@ function transformDataToGraphFormat(graphData) {
 function handleFormSubmit(e) {
   e.preventDefault(); // Prevent form submission
   const userInput = document.getElementById("userInput").value;
+  const load = document.getElementById("load");
 
   // Add the loading class to start the animation
   load.style.display = "block"; // show the load div
@@ -237,12 +237,14 @@ function handleFormSubmit(e) {
     .then((data) => {
       // Remove the loading class to stop the animation
       load.classList.remove("loading");
+      load.style.display = "none";
       // Call createGraph with the data received
       createGraph(data);
     })
     .catch((error) => {
       // Remove the loading class if there's an error
       load.classList.remove("loading");
+      load.style.display = "none";
       console.error("Fetch Error:", error);
     });
 }
