@@ -48,6 +48,24 @@ if neo4j_username and neo4j_password and neo4j_url:
 
 
 def scrape_text_from_url(url):
+    """
+    Scrapes and returns the text content from the paragraphs of the given URL using the BeautifulSoup library.
+
+    Parameters:
+    url (str): The URL of the webpage to scrape content from.
+
+    Returns:
+    str: Returns the text content of all paragraphs in the webpage concatenated as a single string.
+         Returns "Error: Could not retrieve content from URL." if the request status code is not 200.
+
+    Example:
+    >>> scrape_text_from_url("https://example.com")
+    'This is paragraph 1. This is paragraph 2.'
+
+    Notes:
+    - Utilizes the 'requests' library to fetch the webpage.
+    - Uses the 'html.parser' from the BeautifulSoup library to parse the HTML content.
+    """
     response = requests.get(url)
     if response.status_code != 200:
         return "Error: Could not retrieve content from URL."
@@ -56,8 +74,6 @@ def scrape_text_from_url(url):
     text = " ".join([p.get_text() for p in paragraphs])
     print("web scrape done")
     return text
-
-# Check sub/user plan before making a request
 
 
 def correct_json(json_str):
@@ -77,6 +93,41 @@ def correct_json(json_str):
 
 @app.route("/get_response_data", methods=["POST"])
 def get_response_data():
+    """
+    Processes user input to create a knowledge graph using OpenAI's GPT-3.5 Turbo model 
+    and stores the result in a Neo4j database. Returns a JSON object containing the graph 
+    data and metadata.
+
+    Parameters:
+    None. The function takes a POST request with 'user_input' in the request JSON body.
+
+    Returns:
+    json: A JSON object containing graph elements and metadata.
+        Example:
+        {
+            "elements": {
+                "nodes": [...],
+                "edges": [...]
+            },
+            "meta": {
+                "unique_id": <UUID>,
+                "description": <str>,
+                "createdOn": <timestamp>,
+                "lastUpdatedOn": <timestamp>,
+            }
+        }
+
+    Errors:
+    - Returns 400 Bad Request if 'user_input' is not provided in the request body.
+    - Returns 429 Too Many Requests if OpenAI rate limit is exceeded.
+    - Returns 400 Bad Request for general exceptions while calling OpenAI API.
+    - Returns 500 Internal Server Error for exceptions during Neo4j operations.
+
+    Note:
+    - This function utilizes the 'requests' library for API calls and BeautifulSoup for HTML parsing.
+    - It also uses a global variable 'response_data' to store the OpenAI model output.
+    """
+
     global response_data
     user_input = request.json.get("user_input", "")
     if not user_input:
@@ -100,7 +151,7 @@ def get_response_data():
         # Fixing 'from_' to 'from' in the edges
         for edge in response_data['edges']:
             edge['from'] = edge.pop('from_')
-        print(response_data)
+        # print(response_data)
 
     except openai.error.RateLimitError as e:
         # request limit exceeded or something.
@@ -221,6 +272,30 @@ def get_response_data():
 # Function to visualize the knowledge graph using Graphviz
 @app.route("/graphviz", methods=["POST"])
 def visualize_knowledge_graph_with_graphviz():
+    """
+    Generates a visual representation of a knowledge graph using Graphviz and returns the URL 
+    of the generated PNG file.
+
+    This function expects 'response_data' to be populated with the knowledge graph details. 
+    It utilizes Graphviz to create a directed graph ('Digraph') and populates it with nodes 
+    and edges based on the data found in 'response_data'.
+
+    Parameters:
+    None. The function uses the global variable 'response_data' which should be populated prior to calling this function.
+
+    Returns:
+    json: A JSON object containing the URL of the generated PNG.
+        Example:
+        {
+            "png_url": "http://server_address/static/knowledge_graph.png"
+        }
+
+    Status Codes:
+    - Returns 200 OK if the PNG file is successfully generated and saved.
+
+    Side Effects:
+    - Generates and saves a PNG file on the server.
+    """
     global response_data
     dot = Digraph(comment="Knowledge Graph")
     response_dict = response_data
@@ -244,12 +319,40 @@ def visualize_knowledge_graph_with_graphviz():
     return jsonify({"png_url": png_url}), 200
 
 
-@app.route("/get_graph_data", methods=["POST"])
+@app.route("/get_graph_data", methods=["GET"])
 def get_graph_data():
     """
-    This function is now redundant and will be removed soon. 
-    The front-end should not call this function.
+    DEPRECATED: This function is now redundant and should not be used by the front-end. 
+    It will be removed in a future release.
+
+    Fetches graph elements from a Neo4j database and returns them in a format compatible 
+    with the front-end graph rendering library.
+
+    Parameters:
+    None. The function takes a POST request but doesn't expect specific parameters.
+
+    Returns:
+    json: A JSON object containing graph elements.
+        Example:
+        {
+            "elements": {
+                "nodes": [...],
+                "edges": [...]
+            },
+            "message": "This function is now redundant and will be removed soon."
+        }
+
+    Status Codes:
+    - Returns 200 OK if the operation is successful.
+    - Returns 410 Gone if the function encounters an error.
+
+    DeprecationWarning:
+    This function is deprecated and will be removed in a future version. Do not use it for new development.
+
     """
+    import warnings
+    warnings.warn(
+        "The get_graph_data function is deprecated and will be removed in a future version.", DeprecationWarning)
     try:
         if neo4j_driver:
             nodes, _, _ = neo4j_driver.execute_query("""
@@ -295,15 +398,39 @@ def get_graph_data():
                 for edge in response_dict["edges"]
             ]
         return jsonify({"elements": {"nodes": nodes, "edges": edges},
-                        "message": "This function is now redundant and will be removed soon."}), 200
+                        "message": "This function is now redundant and will be removed soon.",
+                        "DeprecationWarning": "This function is deprecated and will be removed in a future version."}), 200
     except:
         # 410 Gone
         return jsonify({"elements": {"nodes": [], "edges": []},
-                        "message": "This function is now redundant and will be removed soon."}), 410
+                        "message": "This function is now redundant and will be removed soon.",
+                        "DeprecationWarning": "This function is deprecated and will be removed in a future version."}), 410
 
 
 @app.route("/get_graph_history", methods=["GET"])
 def get_graph_history():
+    """
+    Description:
+    Fetches and returns the history of the last 10 most recently updated graph metadata along with their related nodes and relationships from a Neo4j database. If the Neo4j driver is not initialized, an error message is returned.
+
+    Parameters:
+    None. This is a GET request and does not require input parameters. The function assumes that the 'neo4j_driver' is globally available and properly initialized.
+
+    Returns:
+    JSON Object: A JSON object containing an array "graph_history" which consists of metadata, nodes, and relationships for each historical graph entry. The JSON object also contains a "total" field indicating the number of historical entries.
+    - Example Return:
+        {
+            "graph_history": [...],
+            "total": 10
+        }
+
+    Status Codes:
+    - Returns 200 OK if successful.
+    - Returns 500 Internal Server Error if the Neo4j driver is not initialized or any exception occurs.
+
+    Exceptions:
+    Catches general exceptions and returns a 500 status code along with the exception message.
+    """
     try:
         if neo4j_driver:
             # Fetching 10 most recent MetaData along with related nodes and relationships
@@ -380,7 +507,7 @@ def get_graph_history():
 def process_graph_data(record):
     """
     This function is now redundant and will be removed soon. 
-    
+
     This function processes a record from the Neo4j query result
     and formats it as a dictionary with the node details and the relationship.
 
