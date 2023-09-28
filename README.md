@@ -100,7 +100,7 @@ Best way to chat with me is on Twitter at [@yoheinakajima](https://twitter.com/y
 
 - ✅~~Store knowledge graph~~ (thx [@tomasonjo](https://github.com/tomasonjo)! 9/13/23)
 - ✅~~Pull knowledge graph from storage~~ (thx [@tomasonjo](https://github.com/tomasonjo)! 9/13/23)
-- 🐛⏳Show history
+- ✅Show history
 - 📝Ability to combine two graphs
 - 📝Ability to combine 2+ graphs from history
 - ✅~~Ability to expand on a graph~~ (thx [@tomasonjo](https://github.com/tomasonjo)! 9/13/23)
