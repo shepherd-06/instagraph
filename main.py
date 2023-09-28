@@ -438,6 +438,7 @@ def get_graph_history():
             MATCH (m:MetaData)-[:CONTAINS]->(n:Node)
             WITH collect(n.id) as nodeIds, m as metaData
             ORDER BY metaData.lastUpdatedOn DESC
+            LIMIT 10
             MATCH (s:Node)-[r:RELATIONSHIP]->(t:Node)
             WHERE s.id IN nodeIds AND t.id IN nodeIds
             RETURN s AS source, r AS relation, t AS target, metaData
