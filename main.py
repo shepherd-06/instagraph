@@ -13,6 +13,7 @@ from models import KnowledgeGraph
 import time
 from uuid import uuid4
 import traceback
+from datetime import datetime
 
 instructor.patch()
 
@@ -59,59 +60,6 @@ def scrape_text_from_url(url):
 # Check sub/user plan before making a request
 
 
-def make_request(request_body):
-    if check_if_free_plan():
-        time.sleep(20)
-    response = api.create_completion(request_body)
-    return response
-
-# Function to check user plan
-
-
-def check_if_free_plan():
-    """
-    receive USER_PLAN from .env.
-    Added default None, as this project won't be in free plan in production mode.
-
-    Returns:
-        bool: _description_
-    """
-    return os.environ.get("USER_PLAN", None) == "free"
-
-# Rate limiting
-
-
-@app.after_request
-def add_header(response):
-    """
-    add response header if free plan.
-
-    Args:
-        response (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    if check_if_free_plan():
-        response.headers['Retry-After'] = 20
-    return response
-
-
-@app.errorhandler(429)
-def too_many_requests(e):
-    """
-    rate throttling handler for free user.
-
-    Args:
-        e (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    time.sleep(20)
-    return make_request(request.json)
-
-
 def correct_json(json_str):
     """
     Corrects the JSON response from OpenAI to be valid JSON by removing trailing commas
@@ -152,6 +100,7 @@ def get_response_data():
         # Fixing 'from_' to 'from' in the edges
         for edge in response_data['edges']:
             edge['from'] = edge.pop('from_')
+        print(response_data)
 
     except openai.error.RateLimitError as e:
         # request limit exceeded or something.
@@ -169,8 +118,8 @@ def get_response_data():
             # Import nodes
             unique_id = str(uuid4())
             description = response_data["metadata"]["description"]
-            created_on = response_data["metadata"]["createdDate"]
-            updated_on = response_data["metadata"]["lastUpdated"]
+            created_on = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+            updated_on = created_on
 
             # Create MetaData node
             neo4j_driver.execute_query(
@@ -356,40 +305,82 @@ def get_graph_data():
 @app.route("/get_graph_history", methods=["GET"])
 def get_graph_history():
     try:
-        page = request.args.get('page', default=1, type=int)
-        per_page = 10
-        skip = (page - 1) * per_page
-
         if neo4j_driver:
-            # Getting the total number of graphs
-            total_graphs, _, _ = neo4j_driver.execute_query("""
-            MATCH (n)-[r]->(m)
-            RETURN count(n) as total_count
-            """)
-            total_count = total_graphs[0]['total_count']
-
-            # Fetching 10 most recent graphs
+            # Fetching 10 most recent MetaData along with related nodes and relationships
             result, _, _ = neo4j_driver.execute_query("""
-            MATCH (n)-[r]->(m)
-            RETURN n, r, m
-            ORDER BY r.timestamp DESC
-            SKIP {skip}
-            LIMIT {per_page}
-            """.format(skip=skip, per_page=per_page))
+            MATCH (m:MetaData)
+            WITH m ORDER BY datetime(m.lastUpdatedOn) DESC LIMIT 10
+            MATCH (m)-[:CONTAINS]->(n:Node)
+            MATCH (n)-[r:RELATIONSHIP]->(other:Node) WHERE (m)-[:CONTAINS]->(other)
+            RETURN m,n, r, other
+            """)
 
-            # Process the 'result' to format it as a list of graphs
-            graph_history = [process_graph_data(record) for record in result]
-            remaining = max(0, total_count - skip - per_page)
+            current_uuid = None
+            graph_data = []  # temp storage
+            graph_history = []  # have sorted graph_data based on unique id
 
-            return jsonify({"graph_history": graph_history, "remaining": remaining})
+            for record in result:
+                # Converting dict_items to dictionary
+                node_meta = dict(record['m'].items())
+                # they will be converted automatically in the loop
+                node_from = record['n'].items()
+                relationship = record['r'].items()
+                node_to = record['other'].items()
+
+                if current_uuid is None:
+                    # initial logic
+                    metadata = {
+                        "description": node_meta["description"],
+                        "last_updated_on": node_meta["lastUpdatedOn"],
+                        "created_on": node_meta["createdOn"],
+                        "unique_id": node_meta["uuid"]
+                    }
+                    current_uuid = node_meta["uuid"]
+                    graph_data.append({
+                        "from": {key: value for key, value in node_from},
+                        "to": {key: value for key, value in node_to},
+                        "relationship": {key: value for key, value in relationship},
+                    })
+                elif current_uuid == node_meta["uuid"]:
+                    # continue logic
+                    graph_data.append({
+                        "from": {key: value for key, value in node_from},
+                        "to": {key: value for key, value in node_to},
+                        "relationship": {key: value for key, value in relationship},
+                    })
+                else:
+                    # changed uuid logic
+                    graph_history.append({
+                        "metadata": metadata,
+                        "graph": graph_data,
+                    })
+                    # new Entry
+                    graph_data = []
+                    metadata = {
+                        "description": node_meta["description"],
+                        "last_updated_on": node_meta["lastUpdatedOn"],
+                        "created_on": node_meta["createdOn"],
+                        "unique_id": node_meta["uuid"]
+                    }
+                    current_uuid = node_meta["uuid"]
+                    graph_data = []  # flashing the graph data
+                    graph_data.append({
+                        "from": {key: value for key, value in node_from},
+                        "to": {key: value for key, value in node_to},
+                        "relationship": {key: value for key, value in relationship},
+                    })
+            return jsonify({"graph_history": graph_history, "total": len(graph_history)})
         else:
             return jsonify({"error": "Neo4j driver not initialized"}), 500
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
 def process_graph_data(record):
     """
+    This function is now redundant and will be removed soon. 
+    
     This function processes a record from the Neo4j query result
     and formats it as a dictionary with the node details and the relationship.
 

@@ -104,18 +104,15 @@ async function fetchGraphHistory() {
     const graphHistoryDiv = document.getElementById("history");
 
     graph_history.forEach((item, index) => {
+      const metadata = item.metadata;
       graphHistoryDiv.innerHTML += `
-              <div class="bg-gray-200 hover:bg-gray-300 p-5 rounded" onclick="handleGraphItemClick(event)" data-item='${JSON.stringify(
-                item
-              )}'>
-                <p>${index + 1}. From: ${item.from_node.label} (Type: ${
-        item.from_node.type
-      }) 
-                - Relationship: ${item.relationship.type} (Direction: ${
-        item.relationship.direction
-      }) 
-                - To: ${item.to_node.label} (Type: ${item.to_node.type})</p>
-              </div>`;
+                <div class="bg-gray-200 hover:bg-gray-300 p-5 rounded" onclick="handleGraphItemClick(event)" data-item='${JSON.stringify(
+                  item
+                )}'>
+                  <p>${index + 1}. ${metadata.description} <br/>
+                  - Created On: ${metadata.created_on} <br/>
+                  - Last Updated On: ${metadata.last_updated_on}</p>
+                </div>`;
     });
   } catch (error) {
     console.error("Error fetching graph history:", error);
@@ -138,51 +135,79 @@ function showError(message) {
 
 // draw graph from history.
 function handleGraphItemClick(event) {
-  const itemData = JSON.parse(event.currentTarget.getAttribute("data-item"));
-  const transformedData = transformDataToGraphFormat(itemData);
+  const graphData = JSON.parse(event.currentTarget.getAttribute("data-item"));
 
+  const transformedData = transformDataToGraphFormat(graphData);
+  // You can also display graphData.graph to the console to see the graph elements
+  console.log("Transformed graph data:", transformedData);
   createGraph(transformedData);
 }
 
-function transformDataToGraphFormat(itemData) {
+function transformDataToGraphFormat(graphData) {
   /**
    * Transforms the graph history data to a format suitable for creating a graph using the createGraph function.
    *
    * @author shepherd-06
    **/
+
+  const elements = {
+    edges: [],
+    nodes: [],
+  };
+
+  // Using a Set to ensure that nodes are unique
+  const uniqueNodes = new Set();
+
+  graphData.graph.forEach((item) => {
+    // Add edge
+    elements.edges.push({
+      data: {
+        color: item.relationship.color,
+        label: item.relationship.type,
+        source: item.from.id,
+        target: item.to.id,
+      },
+    });
+
+    // Add nodes only if they are unique
+    if (!uniqueNodes.has(item.from.id)) {
+      elements.nodes.push({
+        data: {
+          id: item.from.id,
+          label: item.from.label,
+          type: item.from.type,
+          color: item.from.color,
+        },
+      });
+      uniqueNodes.add(item.from.id);
+    }
+
+    if (!uniqueNodes.has(item.to.id)) {
+      elements.nodes.push({
+        data: {
+          id: item.to.id,
+          label: item.to.label,
+          type: item.to.type,
+          color: item.to.color,
+        },
+      });
+      uniqueNodes.add(item.to.id);
+    }
+  });
+
+  const meta = {
+    unique_id: graphData.metadata.unique_id,
+    description: graphData.metadata.description,
+    createdOn: graphData.metadata.created_on,
+    lastUpdatedOn: graphData.metadata.last_updated_on,
+  };
+
   return {
-    elements: {
-      edges: [
-        {
-          data: {
-            color: itemData.relationship.color,
-            label: itemData.relationship.type,
-            source: itemData.from_node.id,
-            target: itemData.to_node.id,
-          },
-        },
-      ],
-      nodes: [
-        {
-          data: {
-            id: itemData.from_node.id,
-            label: itemData.from_node.label,
-            type: itemData.from_node.type,
-            color: itemData.from_node.color,
-          },
-        },
-        {
-          data: {
-            id: itemData.to_node.id,
-            label: itemData.to_node.label,
-            type: itemData.to_node.type,
-            color: itemData.to_node.color,
-          },
-        },
-      ],
-    },
+    elements,
+    meta,
   };
 }
+
 
 // Event listener for the form submission
 function handleFormSubmit(e) {
